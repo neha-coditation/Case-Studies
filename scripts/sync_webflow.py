@@ -4,7 +4,6 @@
 # description from it, and creates (or updates, if the slug already exists)
 # a live Webflow CMS Collection Item. Invoked once per newly-added .html
 # file by .github/workflows/webflow-sync.yml.
-
 import os
 import json
 import requests
@@ -29,10 +28,13 @@ with open(HTML_FILE, "r", encoding="utf-8") as f:
     html = f.read()
 
 soup = BeautifulSoup(html, "lxml")
-
 page_url = f"{GITHUB_PAGES}/{os.path.basename(HTML_FILE)}"
 
-# Title Fallback Extraction — prefer the page's <h1>, fall back to <title>
+# Filename-derived slug — used as a fallback title source below
+slug = os.path.splitext(os.path.basename(HTML_FILE))[0]
+
+# Title Fallback Extraction — prefer the page's <h1>, fall back to <title>,
+# then fall back to the filename-derived slug
 title = ""
 h1 = soup.find("h1")
 if h1:
@@ -104,7 +106,6 @@ try:
             data=json.dumps(payload)
         )
     response.raise_for_status()
-
     print("=" * 60)
     print("✅ Webflow Sync Successful")
     print("=" * 60)
