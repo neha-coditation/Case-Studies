@@ -1,4 +1,4 @@
-name: Update Webflow CMS
+name: Sync GitHub Pages to Webflow
 
 on:
   push:
@@ -8,16 +8,25 @@ on:
       - "*.html"
 
 jobs:
-  update-webflow:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Get changed HTML file
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Find Changed HTML File
         id: changed
+        shell: bash
         run: |
           FILE=$(git diff --name-only HEAD~1 HEAD | grep '\.html$' | head -1)
 
@@ -26,32 +35,14 @@ jobs:
             exit 0
           fi
 
-          echo "file=$FILE" >> $GITHUB_OUTPUT
+          echo "Changed file: $FILE"
 
-      - name: Generate URL
-        id: page
+          echo "HTML_FILE=$FILE" >> $GITHUB_ENV
+
+      - name: Sync to Webflow
+        env:
+          WEBFLOW_TOKEN: ${{ secrets.WEBFLOW_TOKEN }}
+          COLLECTION_ID: 69e88bdf798339812888e292
+          GITHUB_PAGES: https://neha-coditation.github.io/Case-Studies
         run: |
-          FILE="${{ steps.changed.outputs.file }}"
-          NAME=$(basename "$FILE" .html)
-
-          URL="https://neha-coditation.github.io/Case-Studies/$FILE"
-
-          echo "name=$NAME" >> $GITHUB_OUTPUT
-          echo "slug=$NAME" >> $GITHUB_OUTPUT
-          echo "url=$URL" >> $GITHUB_OUTPUT
-
-      - name: Create Webflow CMS Item
-        run: |
-          curl -X POST \
-          "https://api.webflow.com/v2/collections/69e88bdf798339812888e292/items/live" \
-          -H "Authorization: Bearer ${{ secrets.WEBFLOW_TOKEN }}" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "isArchived": false,
-            "isDraft": false,
-            "fieldData": {
-              "name": "${{ steps.page.outputs.name }}",
-              "slug": "${{ steps.page.outputs.slug }}",
-              "html-url": "${{ steps.page.outputs.url }}"
-            }
-          }'
+          python scripts/sync_webflow.py
