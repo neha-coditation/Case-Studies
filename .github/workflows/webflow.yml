@@ -2,44 +2,57 @@ name: Update Webflow CMS
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - "case-studies/*.html"
+      - "**/*.html"
 
 jobs:
   update-webflow:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-      - name: Get changed HTML file
+      - name: Find Changed HTML File
         id: changed
         run: |
-          FILE=$(git diff --name-only HEAD^ HEAD | grep '.html' | head -1)
+          FILE=$(git diff --name-only HEAD~1 HEAD | grep '\.html$' | head -1)
+
+          if [ -z "$FILE" ]; then
+            echo "No HTML file changed."
+            exit 0
+          fi
+
           echo "file=$FILE" >> $GITHUB_OUTPUT
 
-      - name: Generate URL
-        id: url
+      - name: Generate Page Information
+        id: page
         run: |
           FILE="${{ steps.changed.outputs.file }}"
           NAME=$(basename "$FILE" .html)
-          URL="https://YOURUSERNAME.github.io/YOURREPO/$FILE"
+
+          URL="https://YOUR_GITHUB_USERNAME.github.io/${{ github.event.repository.name }}/$FILE"
 
           echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "slug=$NAME" >> $GITHUB_OUTPUT
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Create CMS Item
+      - name: Create Webflow CMS Item
         run: |
-          curl -X POST \
-          https://api.webflow.com/v2/collections/${{ secrets.WEBFLOW_COLLECTION_ID }}/items \
-          -H "Authorization: Bearer ${{ secrets.WEBFLOW_TOKEN }}" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "isDraft": false,
-            "isArchived": false,
-            "fieldData": {
-              "name": "${{ steps.url.outputs.name }}",
-              "slug": "${{ steps.url.outputs.name }}",
-              "html-url": "${{ steps.url.outputs.url }}"
-            }
-          }'
+          curl --request POST \
+            --url "https://api.webflow.com/v2/collections/${{ secrets.WEBFLOW_COLLECTION_ID }}/items" \
+            --header "Authorization: Bearer ${{ secrets.WEBFLOW_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --data '{
+              "isArchived": false,
+              "isDraft": false,
+              "fieldData": {
+                "name": "${{ steps.page.outputs.name }}",
+                "slug": "${{ steps.page.outputs.slug }}",
+                "YOUR_WEBFLOW_URL_FIELD_SLUG": "${{ steps.page.outputs.url }}"
+              }
+            }'
