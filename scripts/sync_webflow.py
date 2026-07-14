@@ -1,8 +1,9 @@
+
 # Place this file at: scripts/sync_webflow.py
 #
 # Reads the HTML_FILE named in its environment, extracts the case study's
 # name/description/industry from the elements tagged with those ids, and
-# creates (or updates, if a Webflow item with the same name already exists)
+# creates (or updates, if a Webflow item with the same slug already exists)
 # a live Webflow CMS Collection Item. Invoked once per newly-added .html
 # file by .github/workflows/webflow-sync.yml.
 import os
@@ -109,11 +110,10 @@ if industry:
         if field.get("displayName", "").strip().lower() == "industry":
             industry_field_slug = field.get("slug", industry_field_slug)
             break
-
 # Fetch Webflow Items to check for an existing item for this case study.
-# Slug is left out of the payload below (Webflow auto-generates it from
-# name), so we match on the "name" field instead — if an item with the
-# same name already exists, update it; otherwise create a new one.
+# Matched by the filename-derived slug (a stable id for the case study),
+# not by the "name"/title field — titles can be edited later and shouldn't
+# cause a duplicate item to be created.
 url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items"
 response = requests.get(url, headers=HEADERS)
 response.raise_for_status()
@@ -122,16 +122,18 @@ items = response.json().get("items", [])
 existing = None
 for item in items:
     field_data = item.get("fieldData", {})
-    if field_data.get("name") == title:
+    if field_data.get("slug") == slug:
         existing = item
         break
 
-# Payload Structure — no "slug" key, so Webflow auto-generates it from name
+# Payload Structure — slug is set explicitly to the filename-derived id so
+# it stays stable across re-runs, regardless of the human-readable title
 payload = {
     "isArchived": False,
     "isDraft": False,
     "fieldData": {
         "name": title,
+        "slug": slug,
         "html-url": page_url
     }
 }
