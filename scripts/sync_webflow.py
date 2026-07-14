@@ -26,16 +26,13 @@ soup = BeautifulSoup(html, "lxml")
 slug = os.path.splitext(os.path.basename(HTML_FILE))[0]
 page_url = f"{GITHUB_PAGES}/{os.path.basename(HTML_FILE)}"
 
-# Title Fallback Extraction
+# Title Fallback Extraction — prefer the page's <h1>, fall back to <title>
 title = ""
-if soup.title:
+h1 = soup.find("h1")
+if h1:
+    title = h1.get_text(strip=True)
+if not title and soup.title:
     title = soup.title.text.strip()
-
-if not title:
-    h1 = soup.find("h1")
-    if h1:
-        title = h1.get_text(strip=True)
-
 if not title:
     title = slug.replace("-", " ").title()
 
