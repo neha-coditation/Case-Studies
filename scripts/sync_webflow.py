@@ -1,11 +1,13 @@
 # Place this file at: scripts/sync_webflow.py
 #
-# Reads the HTML_FILE named in its environment, extracts a title/slug/
-# description from it, and creates (or updates, if the slug already exists)
+# Reads the HTML_FILE named in its environment, extracts the case study's
+# name/description/industry from the elements tagged with those ids, and
+# creates (or updates, if a Webflow item with the same name already exists)
 # a live Webflow CMS Collection Item. Invoked once per newly-added .html
 # file by .github/workflows/webflow-sync.yml.
 import os
 import json
+import re
 import requests
 from bs4 import BeautifulSoup
 
@@ -28,40 +30,90 @@ with open(HTML_FILE, "r", encoding="utf-8") as f:
     html = f.read()
 
 soup = BeautifulSoup(html, "lxml")
+
+# Some pages (the "bundler" export format) don't hold their real markup as
+# live DOM — it's stashed as a JSON-encoded string inside a
+# <script type="__bundler/template"> tag and injected client-side. If that
+# tag is present, parse the decoded template instead so id lookups below
+# can actually find the h1/p/span elements.
+bundler_template = soup.find("script", attrs={"type": "__bundler/template"})
+if bundler_template and bundler_template.string:
+    soup = BeautifulSoup(json.loads(bundler_template.string), "lxml")
+
 page_url = f"{GITHUB_PAGES}/{os.path.basename(HTML_FILE)}"
 
 # Filename-derived slug — used as a fallback title source below
 slug = os.path.splitext(os.path.basename(HTML_FILE))[0]
 
-# Title Fallback Extraction — prefer the page's <h1>, fall back to <title>,
-# then fall back to the filename-derived slug
+
+def element_text(el):
+    # separator=" " keeps text on either side of nested tags (e.g. <span>,
+    # <br>, <em>) from getting jammed together; collapse the resulting
+    # run of whitespace down to single spaces, then drop the space the
+    # separator introduces before trailing punctuation like "growth ."
+    text = " ".join(el.get_text(separator=" ", strip=True).split())
+    return re.sub(r"\s+([.,!?;:])", r"\1", text)
+
+
+# Title — the case study's <h1 id="case-study-name">, falling back to any
+# <h1>, then <title>, then the filename-derived slug
 title = ""
-h1 = soup.find("h1")
-if h1:
-    title = h1.get_text(strip=True)
+name_el = soup.find(id="case-study-name")
+if name_el:
+    title = element_text(name_el)
+if not title:
+    h1 = soup.find("h1")
+    if h1:
+        title = element_text(h1)
 if not title and soup.title:
     title = soup.title.text.strip()
 if not title:
     title = slug.replace("-", " ").title()
 
-# Description Extraction
+# Description — the paragraph tagged id="case-study-description", falling
+# back to the page's meta description
 description = ""
-meta_desc = (
-    soup.find("meta", attrs={"name": "description"})
-    or soup.find("meta", attrs={"property": "og:description"})
-)
-if meta_desc:
-    description = meta_desc.get("content", "").strip()
+desc_el = soup.find(id="case-study-description")
+if desc_el:
+    description = element_text(desc_el)
+if not description:
+    meta_desc = (
+        soup.find("meta", attrs={"name": "description"})
+        or soup.find("meta", attrs={"property": "og:description"})
+    )
+    if meta_desc:
+        description = meta_desc.get("content", "").strip()
+
+# Industry — the element tagged id="case-study-industry" (a pill badge or
+# a <dd>, depending on the page's layout). Optional: some pages don't have one.
+industry = ""
+industry_el = soup.find(id="case-study-industry")
+if industry_el:
+    industry = element_text(industry_el)
 
 print("Parsed metadata:")
 print(f"  Title:       {title}")
 print(f"  Description: {description}")
+print(f"  Industry:    {industry}")
 print(f"  URL:         {page_url}")
 
-# Fetch Webflow Items to check for an existing item for this page.
+# Look up the live field slug for the "Industry" field from the collection
+# schema, rather than assuming it's literally "industry" — Webflow derives
+# slugs from the field's display name and they don't always match exactly.
+industry_field_slug = "industry"
+if industry:
+    schema_url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}"
+    schema_response = requests.get(schema_url, headers=HEADERS)
+    schema_response.raise_for_status()
+    for field in schema_response.json().get("fields", []):
+        if field.get("displayName", "").strip().lower() == "industry":
+            industry_field_slug = field.get("slug", industry_field_slug)
+            break
+
+# Fetch Webflow Items to check for an existing item for this case study.
 # Slug is left out of the payload below (Webflow auto-generates it from
-# name), so we can no longer match on slug — match on the html-url field
-# instead, since that's unique per page.
+# name), so we match on the "name" field instead — if an item with the
+# same name already exists, update it; otherwise create a new one.
 url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items"
 response = requests.get(url, headers=HEADERS)
 response.raise_for_status()
@@ -70,7 +122,7 @@ items = response.json().get("items", [])
 existing = None
 for item in items:
     field_data = item.get("fieldData", {})
-    if field_data.get("html-url") == page_url:
+    if field_data.get("name") == title:
         existing = item
         break
 
@@ -85,6 +137,8 @@ payload = {
 }
 if description:
     payload["fieldData"]["post-summary"] = description
+if industry:
+    payload["fieldData"][industry_field_slug] = industry
 
 # Update or Create
 try:
