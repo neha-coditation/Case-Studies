@@ -81,7 +81,7 @@ for item in items:
         existing = item
         break
 
-# Payload
+# Payload Structure
 payload = {
     "isArchived": False,
     "isDraft": False,
@@ -95,15 +95,18 @@ payload = {
 if description:
     payload["fieldData"]["post-summary"] = description
 
+# Handle Webflow image injection if found in HTML
+if og_image:
+    # Note: Make sure 'main-image' matches your Webflow field identifier exactly
+    payload["fieldData"]["main-image"] = {
+        "url": og_image
+    }
+
 # Update if exists
 if existing:
-
     item_id = existing["id"]
-
     print(f"Updating item {item_id}")
-
     url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/{item_id}/live"
-
     response = requests.patch(
         url,
         headers=HEADERS,
@@ -112,11 +115,8 @@ if existing:
 
 # Otherwise create
 else:
-
     print("Creating new CMS item")
-
     url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/live"
-
     response = requests.post(
         url,
         headers=HEADERS,
@@ -135,12 +135,9 @@ try:
     print("URL   :", page_url)
 
 except requests.exceptions.HTTPError:
-
     print("=" * 60)
     print("❌ Webflow Error")
     print("=" * 60)
-
     print(response.status_code)
     print(response.text)
-
     raise
