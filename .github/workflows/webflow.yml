@@ -5,19 +5,18 @@ on:
     branches:
       - main
     paths:
-      - "**/*.html"
+      - "*.html"
 
 jobs:
   update-webflow:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Find Changed HTML File
+      - name: Get changed HTML file
         id: changed
         run: |
           FILE=$(git diff --name-only HEAD~1 HEAD | grep '\.html$' | head -1)
@@ -29,13 +28,13 @@ jobs:
 
           echo "file=$FILE" >> $GITHUB_OUTPUT
 
-      - name: Generate Page Information
+      - name: Generate URL
         id: page
         run: |
           FILE="${{ steps.changed.outputs.file }}"
           NAME=$(basename "$FILE" .html)
 
-          URL="https://YOUR_GITHUB_USERNAME.github.io/${{ github.event.repository.name }}/$FILE"
+          URL="https://neha-coditation.github.io/Case-Studies/$FILE"
 
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "slug=$NAME" >> $GITHUB_OUTPUT
@@ -43,16 +42,16 @@ jobs:
 
       - name: Create Webflow CMS Item
         run: |
-          curl --request POST \
-            --url "https://api.webflow.com/v2/collections/${{ secrets.WEBFLOW_COLLECTION_ID }}/items" \
-            --header "Authorization: Bearer ${{ secrets.WEBFLOW_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data '{
-              "isArchived": false,
-              "isDraft": false,
-              "fieldData": {
-                "name": "${{ steps.page.outputs.name }}",
-                "slug": "${{ steps.page.outputs.slug }}",
-                "YOUR_WEBFLOW_URL_FIELD_SLUG": "${{ steps.page.outputs.url }}"
-              }
-            }'
+          curl -X POST \
+          "https://api.webflow.com/v2/collections/69e88bdf798339812888e292/items/live" \
+          -H "Authorization: Bearer ${{ secrets.WEBFLOW_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "isArchived": false,
+            "isDraft": false,
+            "fieldData": {
+              "name": "${{ steps.page.outputs.name }}",
+              "slug": "${{ steps.page.outputs.slug }}",
+              "html-url": "${{ steps.page.outputs.url }}"
+            }
+          }'
