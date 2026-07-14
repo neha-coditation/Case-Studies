@@ -3,10 +3,14 @@ import json
 import requests
 from bs4 import BeautifulSoup
 
-WEBFLOW_TOKEN = os.environ["WEBFLOW_TOKEN"]
-COLLECTION_ID = os.environ["COLLECTION_ID"]
-GITHUB_PAGES = os.environ["GITHUB_PAGES"]
-HTML_FILE = os.environ["HTML_FILE"]
+WEBFLOW_TOKEN = os.environ.get("WEBFLOW_TOKEN")
+COLLECTION_ID = os.environ.get("COLLECTION_ID")
+GITHUB_PAGES = os.environ.get("GITHUB_PAGES")
+HTML_FILE = os.environ.get("HTML_FILE")
+
+if not HTML_FILE:
+    print("⚠️ No HTML_FILE environment variable detected. Skipping sync.")
+    exit(0)
 
 HEADERS = {
     "Authorization": f"Bearer {WEBFLOW_TOKEN}",
@@ -22,9 +26,8 @@ soup = BeautifulSoup(html, "lxml")
 slug = os.path.splitext(os.path.basename(HTML_FILE))[0]
 page_url = f"{GITHUB_PAGES}/{os.path.basename(HTML_FILE)}"
 
-# Title
+# Title Fallback Extraction
 title = ""
-
 if soup.title:
     title = soup.title.text.strip()
 
@@ -36,47 +39,31 @@ if not title:
 if not title:
     title = slug.replace("-", " ").title()
 
-# Description
+# Description Extraction
 description = ""
-
-meta = (
+meta_desc = (
     soup.find("meta", attrs={"name": "description"})
     or soup.find("meta", attrs={"property": "og:description"})
 )
+if meta_desc:
+    description = meta_desc.get("content", "").strip()
 
-if meta:
-    description = meta.get("content", "").strip()
+print("Parsed metadata:")
+print(f"  Title:       {title}")
+print(f"  Slug:        {slug}")
+print(f"  Description: {description}")
+print(f"  URL:         {page_url}")
 
-# OG Image
-og_image = ""
-
-meta = (
-    soup.find("meta", attrs={"property": "og:image"})
-    or soup.find("meta", attrs={"name": "og:image"})
-)
-
-if meta:
-    og_image = meta.get("content", "").strip()
-
-print("Title:", title)
-print("Slug:", slug)
-print("Description:", description)
-print("Image:", og_image)
-print("URL:", page_url)
-
-# Get Webflow Items
+# Fetch Webflow Items to check for existing slug
 url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items"
-
 response = requests.get(url, headers=HEADERS)
 response.raise_for_status()
 
 items = response.json().get("items", [])
-
 existing = None
 
 for item in items:
     field_data = item.get("fieldData", {})
-
     if field_data.get("slug") == slug:
         existing = item
         break
@@ -95,49 +82,39 @@ payload = {
 if description:
     payload["fieldData"]["post-summary"] = description
 
-# Handle Webflow image injection if found in HTML
-if og_image:
-    # Note: Make sure 'main-image' matches your Webflow field identifier exactly
-    payload["fieldData"]["main-image"] = {
-        "url": og_image
-    }
-
-# Update if exists
-if existing:
-    item_id = existing["id"]
-    print(f"Updating item {item_id}")
-    url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/{item_id}/live"
-    response = requests.patch(
-        url,
-        headers=HEADERS,
-        data=json.dumps(payload)
-    )
-
-# Otherwise create
-else:
-    print("Creating new CMS item")
-    url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/live"
-    response = requests.post(
-        url,
-        headers=HEADERS,
-        data=json.dumps(payload)
-    )
-
+# Update or Create
 try:
-    response.raise_for_status()
+    if existing:
+        item_id = existing["id"]
+        print(f"\n🔄 Updating existing item: {item_id}")
+        url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/{item_id}/live"
+        response = requests.patch(
+            url,
+            headers=HEADERS,
+            data=json.dumps(payload)
+        )
+    else:
+        print("\n✨ Creating new CMS item")
+        url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/live"
+        response = requests.post(
+            url,
+            headers=HEADERS,
+            data=json.dumps(payload)
+        )
 
+    response.raise_for_status()
+    
     print("=" * 60)
     print("✅ Webflow Sync Successful")
     print("=" * 60)
 
-    print("Title :", title)
-    print("Slug  :", slug)
-    print("URL   :", page_url)
-
-except requests.exceptions.HTTPError:
+except requests.exceptions.HTTPError as err:
     print("=" * 60)
-    print("❌ Webflow Error")
+    print("❌ Webflow API Error Detailed Output:")
     print("=" * 60)
-    print(response.status_code)
-    print(response.text)
-    raise
+    print(f"Status Code: {response.status_code}")
+    try:
+        print(json.dumps(response.json(), indent=2))
+    except Exception:
+        print(response.text)
+    raise err
