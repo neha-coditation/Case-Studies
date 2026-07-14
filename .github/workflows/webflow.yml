@@ -1,0 +1,45 @@
+name: Update Webflow CMS
+
+on:
+  push:
+    paths:
+      - "case-studies/*.html"
+
+jobs:
+  update-webflow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get changed HTML file
+        id: changed
+        run: |
+          FILE=$(git diff --name-only HEAD^ HEAD | grep '.html' | head -1)
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+
+      - name: Generate URL
+        id: url
+        run: |
+          FILE="${{ steps.changed.outputs.file }}"
+          NAME=$(basename "$FILE" .html)
+          URL="https://YOURUSERNAME.github.io/YOURREPO/$FILE"
+
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Create CMS Item
+        run: |
+          curl -X POST \
+          https://api.webflow.com/v2/collections/${{ secrets.WEBFLOW_COLLECTION_ID }}/items \
+          -H "Authorization: Bearer ${{ secrets.WEBFLOW_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "isDraft": false,
+            "isArchived": false,
+            "fieldData": {
+              "name": "${{ steps.url.outputs.name }}",
+              "slug": "${{ steps.url.outputs.name }}",
+              "html-url": "${{ steps.url.outputs.url }}"
+            }
+          }'
