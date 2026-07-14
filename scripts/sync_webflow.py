@@ -27,9 +27,21 @@ title = ""
 if soup.title:
     title = soup.title.text.strip()
 
+if not title:
+    h1 = soup.find("h1")
+
+    if h1:
+        title = h1.get_text(strip=True)
+
+if not title:
+    title = slug.replace("-", " ").title()
+
 description = ""
 
-meta = soup.find("meta", attrs={"name": "description"})
+meta = (
+    soup.find("meta", attrs={"name": "description"})
+    or soup.find("meta", attrs={"property": "og:description"})
+)
 
 if meta:
     description = meta.get("content", "").strip()
@@ -97,14 +109,28 @@ else:
 
     url = f"https://api.webflow.com/v2/collections/{COLLECTION_ID}/items/live"
 
-    response = requests.post(
+    response = requests.potry:
+    response.raise_for_status()
+
+    print("=" * 60)
+    print("✅ Webflow Sync Successful")
+    print("=" * 60)
+
+    print("Title :", title)
+    print("Slug  :", slug)
+    print("URL   :", page_url)
+
+except requests.exceptions.HTTPError:
+    print("=" * 60)
+    print("❌ Webflow Error")
+    print("=" * 60)
+
+    print(response.status_code)
+    print(response.text)
+
+    raisest(
         url,
         headers=HEADERS,
         data=json.dumps(payload)
     )
 
-print(response.status_code)
-print(response.text)
-response.raise_for_status()
-
-print("✅ Webflow synced successfully")
