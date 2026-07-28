@@ -64,7 +64,9 @@ new ResizeObserver(() => {
 setInterval(updateHeight, 1000);
 </script>
   <script>
-    
+    document.querySelectorAll('[data-dc-tpl="416"]').forEach((el) => {
+    el.style.display = 'none';
+});
 document.addEventListener('DOMContentLoaded', async function() {
   const loading = document.getElementById('__bundler_loading');
   function setStatus(msg) { if (loading) loading.textContent = msg; }
